@@ -1,0 +1,39 @@
+Django==5.0.1
+djangorestframework==3.16.1
+django-cors-headers==4.3.1
+djangorestframework-simplejwt==5.3.0
+channels==4.0.0
+channels-redis==4.1.0
+celery==5.3.6
+redis==5.0.1
+psycopg2-binary==2.9.9
+opencv-python==4.9.0.80
+Pillow==10.2.0
+qrcode[pil]==7.4.2
+python-decouple==3.8
+python-dotenv==1.0.0
+
+# Autenticação e segurança
+django-allauth==0.63.3
+django-environ==0.11.2
+
+# API docs
+drf-spectacular==0.27.2
+
+# Admin melhorado
+django-admin-interface==0.28.2
+
+# Utilitários
+python-dateutil==2.9.0.post0
+requests==2.31.0
+
+# Desenvolvimento (não em produção)
+django-extensions==3.2.3
+black==24.3.0
+isort==5.13.2
+flake8==7.0.0
+
+asgiref==3.11.1
+
+sqlparse==0.5.5
+
