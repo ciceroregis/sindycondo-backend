@@ -3,10 +3,11 @@ from rest_framework.decorators import api_view, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Condominio, Usuario
+from .models import Condominio, Garagem, Usuario
 from .permissions import IsAdmin, IsAdminOrSindico, IsMesmoCondominio
 from .serializers import (
     CondominioSerializer,
+    GaragemSerializer,
     UsuarioSerializer,
     UsuarioListSerializer,
     UsuarioUpdateSerializer,
@@ -33,6 +34,7 @@ def health_check(request):
             'GET  /api/condominios/',
             'GET  /api/usuarios/',
             'GET  /api/usuarios/me/',
+            'GET  /api/garagens/',
         ],
     })
 
@@ -61,6 +63,34 @@ class CondominioViewSet(viewsets.ModelViewSet):
         return Condominio.objects.none()
 
 
+class GaragemViewSet(viewsets.ModelViewSet):
+    serializer_class = GaragemSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdminOrSindico()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser:
+            return Garagem.objects.select_related('condominio', 'morador').all()
+        usuario = _get_usuario(user)
+        if not usuario:
+            return Garagem.objects.none()
+        if usuario.tipo == 'admin':
+            return Garagem.objects.select_related('condominio', 'morador').all()
+        if usuario.condominio:
+            qs = Garagem.objects.select_related('condominio', 'morador').filter(
+                condominio=usuario.condominio
+            )
+            # Filtro opcional: ?disponivel=true
+            if self.request.query_params.get('disponivel') == 'true':
+                qs = qs.filter(morador__isnull=True)
+            return qs
+        return Garagem.objects.none()
+
+
 class UsuarioViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
@@ -73,33 +103,25 @@ class UsuarioViewSet(viewsets.ModelViewSet):
             return [IsAdminOrSindico()]
         if self.action == 'destroy':
             return [IsAdmin()]
+        if self.action in ['update', 'partial_update']:
+            return [IsAdminOrSindico()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
-            return Usuario.objects.select_related('condominio').all()
+            return Usuario.objects.select_related('condominio', 'garagem').all()
         usuario = _get_usuario(user)
         if not usuario:
             return Usuario.objects.none()
         if usuario.tipo == 'admin':
-            return Usuario.objects.select_related('condominio').all()
+            return Usuario.objects.select_related('condominio', 'garagem').all()
         if usuario.tipo in ['sindico', 'porteiro']:
-            return Usuario.objects.select_related('condominio').filter(
+            return Usuario.objects.select_related('condominio', 'garagem').filter(
                 condominio=usuario.condominio
             )
         # morador: apenas si mesmo
-        return Usuario.objects.filter(id=usuario.id)
-
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        usuario = _get_usuario(request.user)
-        if usuario and usuario.tipo == 'morador' and instance.id != usuario.id:
-            return Response(
-                {'detail': 'Sem permissão para editar outros usuários.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().update(request, *args, **kwargs)
+        return Usuario.objects.select_related('garagem').filter(id=usuario.id)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def me(self, request):
@@ -129,3 +151,29 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdminOrSindico])
+    def pendentes(self, request):
+        """Lista moradores pendentes de aprovação."""
+        usuario = _get_usuario(request.user)
+        qs = Usuario.objects.filter(is_active=False, tipo='morador')
+        if usuario and usuario.tipo not in ['admin'] and not request.user.is_superuser:
+            qs = qs.filter(condominio=usuario.condominio)
+        serializer = UsuarioListSerializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsAdminOrSindico])
+    def aprovar(self, request, pk=None):
+        """Aprova cadastro de morador."""
+        instance = self.get_object()
+        instance.is_active = True
+        instance.save(update_fields=['is_active'])
+        return Response({'detail': 'Morador aprovado com sucesso.'})
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsAdminOrSindico])
+    def rejeitar(self, request, pk=None):
+        """Rejeita cadastro de morador."""
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save(update_fields=['is_active'])
+        return Response({'detail': 'Morador rejeitado.'})

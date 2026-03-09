@@ -36,12 +36,18 @@ class Usuario(User):
         ('morador', 'Morador'),
     ]
 
+    PAPEIS = [
+        ('titular', 'Titular'),
+        ('dependente', 'Dependente'),
+    ]
+
     nome = models.CharField(max_length=200)
     cpf = models.CharField(max_length=14, unique=True, blank=True, null=True)
     condominio = models.ForeignKey(Condominio, on_delete=models.CASCADE, null=True, blank=True, related_name="usuarios")
     tipo = models.CharField(max_length=10, choices=TIPOS, default="morador")
+    papel = models.CharField(max_length=10, choices=PAPEIS, default='titular', blank=True, null=True)
     telefone = models.CharField(max_length=20, blank=True, null=True)
-    apartamento = models.CharField(max_length=20, blank=True, null=True)
+    apartamento = models.IntegerField(blank=True, null=True)
     bloco = models.IntegerField(blank=True, null=True)
     foto = models.ImageField(upload_to='uploads/', blank=True, null=True)
     face_embeddings = models.JSONField(null=True, blank=True)
@@ -59,6 +65,29 @@ class Usuario(User):
 
     def __str__(self):
         return f'{self.get_full_name()} ({self.tipo}) - {self.condominio}'
+
+class Garagem(models.Model):
+    condominio = models.ForeignKey(Condominio, on_delete=models.CASCADE, related_name='garagens')
+    numero = models.CharField(max_length=20)
+    morador = models.OneToOneField(
+        'Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='garagem'
+    )
+
+    class Meta:
+        db_table = 'garagens'
+        verbose_name = 'Garagem'
+        verbose_name_plural = 'Garagens'
+        ordering = ['condominio', 'numero']
+        unique_together = [('condominio', 'numero')]
+
+    def __str__(self):
+        status = f'→ {self.morador.nome}' if self.morador_id else 'disponível'
+        return f'Garagem {self.numero} ({self.condominio}) — {status}'
+
+    @property
+    def disponivel(self):
+        return self.morador_id is None
+
 
 class Visitante(models.Model):
     STATUS = [
