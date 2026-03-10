@@ -84,18 +84,19 @@ class CondominioSerializer(serializers.ModelSerializer):
                 )
             })
 
-        # blocos não pode ser menor que o maior bloco em uso
-        maior_bloco = (
-            self.instance.usuarios.filter(tipo='morador', bloco__isnull=False)
-            .order_by('-bloco')
+        # blocos não pode ser menor que a quantidade de blocos distintos em uso
+        blocos_em_uso = (
+            self.instance.usuarios
+            .filter(tipo='morador', bloco__isnull=False)
             .values_list('bloco', flat=True)
-            .first()
+            .distinct()
+            .count()
         )
-        if blocos is not None and maior_bloco and blocos < maior_bloco:
+        if blocos is not None and blocos < blocos_em_uso:
             raise serializers.ValidationError({
                 'blocos': (
                     f'Não é possível reduzir para {blocos}. '
-                    f'O bloco {maior_bloco} já está em uso por moradores.'
+                    f'Já existem {blocos_em_uso} bloco(s) distintos em uso por moradores.'
                 )
             })
 
@@ -105,6 +106,7 @@ class CondominioSerializer(serializers.ModelSerializer):
 class GaragemSerializer(serializers.ModelSerializer):
     disponivel = serializers.BooleanField(read_only=True)
     morador_nome = serializers.CharField(source='morador.nome', read_only=True)
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
     morador = serializers.PrimaryKeyRelatedField(
         queryset=Usuario.objects.filter(tipo='morador'),
         required=False,
@@ -113,11 +115,16 @@ class GaragemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Garagem
-        fields = ['id', 'condominio', 'numero', 'morador', 'morador_nome', 'disponivel']
+        fields = [
+            'id', 'condominio', 'numero', 'tipo', 'tipo_display',
+            'matricula', 'morador', 'morador_nome', 'disponivel',
+        ]
         validators = []
 
     def validate(self, attrs):
         condominio = attrs.get('condominio', getattr(self.instance, 'condominio', None))
+        tipo = attrs.get('tipo', getattr(self.instance, 'tipo', 'vinculada'))
+        matricula = attrs.get('matricula', getattr(self.instance, 'matricula', None))
 
         # Condomínio não pode ser alterado no update
         if self.instance and 'condominio' in attrs and attrs['condominio'] != self.instance.condominio:
@@ -149,26 +156,42 @@ class GaragemSerializer(serializers.ModelSerializer):
                 {'numero': f'A garagem {numero} já está cadastrada neste condomínio.'}
             )
 
+        # Vaga autônoma exige matrícula
+        if tipo == 'autonoma' and not matricula:
+            raise serializers.ValidationError(
+                {'matricula': 'Matrícula é obrigatória para vagas autônomas (registro próprio no cartório).'}
+            )
+
+        # Matrícula única por condomínio (quando informada)
+        if matricula:
+            matricula_qs = Garagem.objects.filter(condominio=condominio, matricula=matricula)
+            if self.instance:
+                matricula_qs = matricula_qs.exclude(pk=self.instance.pk)
+            if matricula_qs.exists():
+                raise serializers.ValidationError(
+                    {'matricula': f'Já existe uma vaga com a matrícula {matricula} neste condomínio.'}
+                )
+
         # Validações do morador
-        morador = attrs.get('morador', None)
-        if morador is not None:
+        morador = attrs.get('morador', getattr(self.instance, 'morador', None) if 'morador' in attrs else None)
+        if 'morador' in attrs and morador is not None:
             # Morador deve pertencer ao mesmo condomínio
             if morador.condominio_id != condominio.id:
                 raise serializers.ValidationError(
                     {'morador': 'Este morador não pertence ao condomínio desta garagem.'}
                 )
-            # Morador deve ser titular
+            # Somente titulares podem ter vaga atribuída
             if morador.papel != 'titular':
                 raise serializers.ValidationError(
-                    {'morador': 'Somente titulares podem ter garagem atribuída.'}
+                    {'morador': 'Somente titulares podem ter vaga atribuída.'}
                 )
-            # Morador não pode ter outra garagem
-            outra_garagem = Garagem.objects.filter(morador=morador)
+            # Máximo de 2 vagas por morador
+            vagas_do_morador = Garagem.objects.filter(morador=morador)
             if self.instance:
-                outra_garagem = outra_garagem.exclude(pk=self.instance.pk)
-            if outra_garagem.exists():
+                vagas_do_morador = vagas_do_morador.exclude(pk=self.instance.pk)
+            if vagas_do_morador.count() >= 2:
                 raise serializers.ValidationError(
-                    {'morador': f'Este morador já possui outra garagem atribuída.'}
+                    {'morador': 'Este morador já possui 2 vagas atribuídas (limite máximo).'}
                 )
 
         return attrs
@@ -177,34 +200,40 @@ class GaragemSerializer(serializers.ModelSerializer):
 class UsuarioListSerializer(serializers.ModelSerializer):
     """Versão resumida para listagens"""
     condominio_nome = serializers.CharField(source='condominio.nome', read_only=True)
-    garagem_numero = serializers.CharField(source='garagem.numero', read_only=True)
+    garagens_numeros = serializers.SerializerMethodField()
 
     class Meta:
         model = Usuario
         fields = [
             'id', 'username', 'nome', 'email', 'cpf', 'tipo', 'papel', 'apartamento', 'bloco',
-            'garagem_numero', 'condominio', 'condominio_nome', 'telefone', 'ativo',
+            'garagens_numeros', 'condominio', 'condominio_nome', 'telefone', 'ativo',
         ]
+
+    def get_garagens_numeros(self, obj):
+        return list(obj.garagens.values_list('numero', flat=True))
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     condominio_nome = serializers.CharField(source='condominio.nome', read_only=True)
-    garagem_numero = serializers.CharField(source='garagem.numero', read_only=True)
-    garagem = serializers.PrimaryKeyRelatedField(
-        queryset=Garagem.objects.all(), source='garagem_obj', required=False, allow_null=True, write_only=True
-    )
+    garagens = serializers.SerializerMethodField()
 
     class Meta:
         model = Usuario
         fields = [
             'id', 'username', 'email',
             'nome', 'cpf', 'condominio', 'condominio_nome', 'tipo', 'papel', 'telefone',
-            'apartamento', 'bloco', 'garagem', 'garagem_numero', 'foto', 'face_embeddings',
+            'apartamento', 'bloco', 'garagens', 'foto', 'face_embeddings',
             'notificacoes_push', 'notificacoes_whatsapp', 'ativo',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['username', 'face_embeddings', 'created_at', 'updated_at']
+
+    def get_garagens(self, obj):
+        return [
+            {'id': g.id, 'numero': g.numero, 'tipo': g.tipo, 'matricula': g.matricula}
+            for g in obj.garagens.all()
+        ]
 
     def validate_email(self, value):
         qs = Usuario.objects.filter(email__iexact=value)
@@ -218,7 +247,18 @@ class UsuarioSerializer(serializers.ModelSerializer):
         tipo = attrs.get('tipo', getattr(self.instance, 'tipo', None))
         papel = attrs.get('papel', getattr(self.instance, 'papel', 'titular'))
         condominio = attrs.get('condominio', getattr(self.instance, 'condominio', None))
-        garagem = attrs.get('garagem_obj')
+
+        if tipo == 'sindico' and condominio:
+            sindico_qs = Usuario.objects.filter(condominio=condominio, tipo='sindico')
+            if self.instance:
+                sindico_qs = sindico_qs.exclude(pk=self.instance.pk)
+            if sindico_qs.exists():
+                raise serializers.ValidationError({
+                    'tipo': (
+                        'Este condomínio já possui um síndico. '
+                        'Um condomínio só pode ter um síndico responsável.'
+                    )
+                })
 
         if tipo == 'morador' and condominio:
             apartamento = attrs.get('apartamento', getattr(self.instance, 'apartamento', None))
@@ -228,25 +268,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'apartamento': 'Número do apartamento é obrigatório para moradores.'}
                 )
-            if condominio.total_apartamentos and not (1 <= apartamento <= condominio.total_apartamentos):
-                raise serializers.ValidationError({
-                    'apartamento': (
-                        f'Apartamento inválido. O condomínio possui {condominio.total_apartamentos} '
-                        f'apartamento(s) (1–{condominio.total_apartamentos}).'
-                    )
-                })
-
-            if bloco is None:
+            if apartamento < 1:
                 raise serializers.ValidationError(
-                    {'bloco': 'Número do bloco é obrigatório para moradores.'}
+                    {'apartamento': 'Número do apartamento deve ser maior que zero.'}
                 )
-            if condominio.blocos and not (1 <= bloco <= condominio.blocos):
-                raise serializers.ValidationError({
-                    'bloco': (
-                        f'Bloco inválido. O condomínio possui {condominio.blocos} '
-                        f'bloco(s) (1–{condominio.blocos}).'
-                    )
-                })
+
+            if not bloco:
+                raise serializers.ValidationError(
+                    {'bloco': 'Identificação do bloco é obrigatória para moradores.'}
+                )
 
             if papel == 'titular':
                 # Limite de titulares pelo total de apartamentos
@@ -294,51 +324,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
                         )
                     })
 
-        if garagem is not None and self.instance:
-            raise serializers.ValidationError(
-                {'garagem': 'A garagem não pode ser alterada. Gerencie as garagens pelo endpoint /api/garagens/.'}
-            )
-
-        if garagem is not None:
-            condominio = condominio or getattr(self.instance, 'condominio', None)
-
-            # Somente moradores titulares podem ter garagem
-            if tipo != 'morador':
-                raise serializers.ValidationError(
-                    {'garagem': 'Somente moradores podem ter garagem atribuída.'}
-                )
-            if papel == 'dependente':
-                raise serializers.ValidationError(
-                    {'garagem': 'Dependentes não podem ter garagem. A garagem é atribuída ao titular.'}
-                )
-
-            # Garagem deve pertencer ao mesmo condomínio
-            if condominio and garagem.condominio_id != condominio.id:
-                raise serializers.ValidationError(
-                    {'garagem': 'Esta garagem não pertence ao condomínio do morador.'}
-                )
-
-            # Garagem deve estar disponível
-            if not garagem.disponivel and garagem.morador != self.instance:
-                raise serializers.ValidationError(
-                    {'garagem': f'A garagem {garagem.numero} já está ocupada por outro morador.'}
-                )
-
-            # Titular não pode ter duas garagens simultaneamente
-            if self.instance:
-                garagem_atual = Garagem.objects.filter(morador=self.instance).exclude(pk=garagem.pk).first()
-                if garagem_atual:
-                    raise serializers.ValidationError({
-                        'garagem': (
-                            f'Este morador já possui a garagem {garagem_atual.numero}. '
-                            f'Libere-a antes de atribuir outra.'
-                        )
-                    })
-
         return attrs
 
     def create(self, validated_data):
-        garagem = validated_data.pop('garagem_obj', None)
         cpf_digits = ''.join(filter(str.isdigit, validated_data.get('cpf', '') or ''))
         apartamento = validated_data.get('apartamento', '')
         password = f'{cpf_digits}{apartamento}'
@@ -346,13 +334,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
         usuario = Usuario(**validated_data)
         usuario.set_password(password)
         usuario.save()
-        if garagem is not None:
-            garagem.morador = usuario
-            garagem.save(update_fields=['morador'])
         return usuario
 
     def update(self, instance, validated_data):
-        validated_data.pop('garagem_obj', None)  # garagem não pode ser alterada via update
         password = validated_data.pop('password', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

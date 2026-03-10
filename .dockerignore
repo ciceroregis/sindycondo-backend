@@ -1,0 +1,24 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.git/
+.github/
+.env
+*.env
+.env.*
+!.env.production.example
+
+# Media e static locais
+media/
+staticfiles/
+
+# Dev
+*.log
+.coverage
+htmlcov/
+.pytest_cache/

@@ -2,6 +2,7 @@ import uuid
 
 from django.contrib.auth.models import AbstractUser, User
 from django.db import models
+from django.db.models.functions import Length
 
 class Condominio(models.Model):
     nome = models.CharField(max_length=200)
@@ -48,7 +49,7 @@ class Usuario(User):
     papel = models.CharField(max_length=10, choices=PAPEIS, default='titular', blank=True, null=True)
     telefone = models.CharField(max_length=20, blank=True, null=True)
     apartamento = models.IntegerField(blank=True, null=True)
-    bloco = models.IntegerField(blank=True, null=True)
+    bloco = models.CharField(max_length=20, blank=True, null=True)
     foto = models.ImageField(upload_to='uploads/', blank=True, null=True)
     face_embeddings = models.JSONField(null=True, blank=True)
     notificacoes_push = models.BooleanField(default=True)
@@ -62,27 +63,42 @@ class Usuario(User):
         verbose_name = "Usuario"
         verbose_name_plural = "Usuarios"
         ordering = ["nome"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['condominio'],
+                condition=models.Q(tipo='sindico'),
+                name='unique_sindico_por_condominio',
+            )
+        ]
 
     def __str__(self):
         return f'{self.get_full_name()} ({self.tipo}) - {self.condominio}'
 
 class Garagem(models.Model):
+    TIPOS = [
+        ('autonoma', 'Autônoma'),
+        ('vinculada', 'Vinculada'),
+        ('comum', 'Comum'),
+    ]
+
     condominio = models.ForeignKey(Condominio, on_delete=models.CASCADE, related_name='garagens')
     numero = models.CharField(max_length=20)
-    morador = models.OneToOneField(
-        'Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='garagem'
+    tipo = models.CharField(max_length=10, choices=TIPOS, default='vinculada')
+    matricula = models.CharField(max_length=50, blank=True, null=True)
+    morador = models.ForeignKey(
+        'Usuario', on_delete=models.SET_NULL, null=True, blank=True, related_name='garagens'
     )
 
     class Meta:
         db_table = 'garagens'
         verbose_name = 'Garagem'
         verbose_name_plural = 'Garagens'
-        ordering = ['condominio', 'numero']
+        ordering = ['condominio', Length('numero'), 'numero']
         unique_together = [('condominio', 'numero')]
 
     def __str__(self):
-        status = f'→ {self.morador.nome}' if self.morador_id else 'disponível'
-        return f'Garagem {self.numero} ({self.condominio}) — {status}'
+        ocupante = f'→ {self.morador.nome}' if self.morador_id else 'disponível'
+        return f'Garagem {self.numero} [{self.get_tipo_display()}] ({self.condominio}) — {ocupante}'
 
     @property
     def disponivel(self):
