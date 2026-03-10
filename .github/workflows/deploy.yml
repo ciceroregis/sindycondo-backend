@@ -68,41 +68,29 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Garantir diretório no VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: mkdir -p /opt/sindycondo && chmod 755 /opt/sindycondo
-
-      - name: Copiar arquivos de configuração para o VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          source: "docker-compose.yml,traefik/"
-          target: /opt/sindycondo
-          strip_components: 0
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          envs: GHCR_TOKEN,GHCR_USER
+          envs: GHCR_TOKEN,GHCR_USER,REPO,SHA
           script: |
             set -e
 
+            mkdir -p /opt/sindycondo/traefik
             cd /opt/sindycondo
+
+            echo "==> Baixando arquivos de configuração..."
+            RAW="https://raw.githubusercontent.com/${REPO}/${SHA}"
+            curl -fsSL "${RAW}/docker-compose.yml" -o docker-compose.yml
+            curl -fsSL "${RAW}/traefik/traefik.yml" -o traefik/traefik.yml
 
             echo "==> Autenticando no GHCR..."
             echo "$GHCR_TOKEN" | docker login ghcr.io \
