@@ -75,12 +75,13 @@ jobs:
           GHCR_USER: ${{ github.actor }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
+          GITHUB_IMAGE: ${{ github.repository }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          envs: GHCR_TOKEN,GHCR_USER,REPO,SHA
+          envs: GHCR_TOKEN,GHCR_USER,REPO,SHA,GITHUB_IMAGE
           script: |
             set -e
 
