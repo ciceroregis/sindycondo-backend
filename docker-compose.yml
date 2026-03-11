@@ -15,6 +15,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=sindycondo_web"
+      # Middleware global de redirect HTTP → HTTPS (definido aqui pois traefik sobe primeiro)
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
       # Dashboard HTTPS
       - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.sindycondo.com.br`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
@@ -62,8 +65,6 @@ services:
       - "traefik.http.routers.api-http.rule=Host(`api.sindycondo.com.br`)"
       - "traefik.http.routers.api-http.entrypoints=web"
       - "traefik.http.routers.api-http.middlewares=https-redirect"
-      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
 
   celery:
     image: ghcr.io/${GITHUB_IMAGE}:latest
