@@ -16,12 +16,20 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=sindycondo_web"
       # Dashboard HTTPS
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.sindycondo.com.br`)"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.sindycondo.com.br`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
       - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
       - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_AUTH}"
+      # Redireciona raiz → /dashboard/
+      - "traefik.http.routers.traefik-root.rule=Host(`traefik.sindycondo.com.br`) && Path(`/`)"
+      - "traefik.http.routers.traefik-root.entrypoints=websecure"
+      - "traefik.http.routers.traefik-root.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-root.middlewares=traefik-auth,traefik-root-redirect"
+      - "traefik.http.routers.traefik-root.service=api@internal"
+      - "traefik.http.middlewares.traefik-root-redirect.redirectregex.regex=^https://traefik\\.sindycondo\\.com\\.br/$"
+      - "traefik.http.middlewares.traefik-root-redirect.redirectregex.replacement=https://traefik.sindycondo.com.br/dashboard/"
       # Redirect HTTP → HTTPS
       - "traefik.http.routers.traefik-dashboard-http.rule=Host(`traefik.sindycondo.com.br`)"
       - "traefik.http.routers.traefik-dashboard-http.entrypoints=web"
