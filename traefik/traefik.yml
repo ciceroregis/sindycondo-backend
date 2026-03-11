@@ -18,8 +18,7 @@ certificatesResolvers:
     acme:
       email: contato@sindycondo.com.br
       storage: /acme/acme.json
-      httpChallenge:
-        entryPoint: web
+      tlsChallenge: {}
 
 providers:
   docker:
