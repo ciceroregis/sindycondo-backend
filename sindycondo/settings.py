@@ -184,7 +184,11 @@ SIMPLE_JWT = {
 # === SEGURANÇA (produção) ===
 ENVIRONMENT = env('ENVIRONMENT', default='development')
 
-if ENVIRONMENT == 'production':
+CSRF_TRUSTED_ORIGINS = [
+    f'https://{host.strip()}' for host in ALLOWED_HOSTS if host.strip()
+]
+
+if ENVIRONMENT in ('production', 'tu'):
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = False   # Traefik já faz o redirect
     SESSION_COOKIE_SECURE = True
