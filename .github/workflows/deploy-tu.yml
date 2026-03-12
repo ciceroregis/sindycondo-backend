@@ -69,14 +69,15 @@ jobs:
           script: |
             set -e
 
-            mkdir -p /opt/sindycondo-tu
+            sudo mkdir -p /opt/sindycondo-tu
+            sudo chown -R "$USER":"$USER" /opt/sindycondo-tu
             cd /opt/sindycondo-tu
 
             echo "==> Baixando arquivos de configuração..."
             RAW="https://raw.githubusercontent.com/${REPO}/${SHA}"
-            rm -rf /opt/sindycondo-tu/docker-compose.tu.yml
-            curl -sSL "${RAW}/docker-compose.tu.yml" -o /opt/sindycondo-tu/docker-compose.tu.yml
-            test -s /opt/sindycondo-tu/docker-compose.tu.yml || { echo "ERRO: docker-compose.tu.yml vazio ou não baixado"; exit 1; }
+            rm -f docker-compose.tu.yml
+            curl -sSL "${RAW}/docker-compose.tu.yml" -o docker-compose.tu.yml
+            test -s docker-compose.tu.yml || { echo "ERRO: docker-compose.tu.yml vazio ou não baixado"; exit 1; }
 
             echo "==> Autenticando no GHCR..."
             echo "$GHCR_TOKEN" | docker login ghcr.io \
