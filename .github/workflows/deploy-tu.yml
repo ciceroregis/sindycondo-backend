@@ -14,7 +14,7 @@ jobs:
   # JOB 1: Build e push da imagem Docker (tag: develop)
   # ─────────────────────────────────────────
   build:
-    name: Build Backend Image (TU)
+    name: Build Image (TU)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,7 +47,7 @@ jobs:
   # JOB 2: Deploy no VPS via SSH
   # ─────────────────────────────────────────
   deploy:
-    name: Deploy Backend TU
+    name: Deploy TU
     runs-on: ubuntu-latest
     needs: build
 
@@ -74,7 +74,9 @@ jobs:
 
             echo "==> Baixando arquivos de configuração..."
             RAW="https://raw.githubusercontent.com/${REPO}/${SHA}"
-            curl -fsSL "${RAW}/docker-compose.tu.yml" -o docker-compose.tu.yml
+            rm -rf /opt/sindycondo-tu/docker-compose.tu.yml
+            curl -sSL "${RAW}/docker-compose.tu.yml" -o /opt/sindycondo-tu/docker-compose.tu.yml
+            test -s /opt/sindycondo-tu/docker-compose.tu.yml || { echo "ERRO: docker-compose.tu.yml vazio ou não baixado"; exit 1; }
 
             echo "==> Autenticando no GHCR..."
             echo "$GHCR_TOKEN" | docker login ghcr.io \
