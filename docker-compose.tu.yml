@@ -1,0 +1,107 @@
+name: sindycondo-tu
+
+services:
+
+  api:
+    image: ghcr.io/${GITHUB_IMAGE}:develop
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - media_files:/app/media
+      - static_files:/app/staticfiles
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - web
+      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=sindycondo_web"
+      # HTTPS
+      - "traefik.http.routers.tu-api.rule=Host(`tu.api.sindycondo.com.br`)"
+      - "traefik.http.routers.tu-api.entrypoints=websecure"
+      - "traefik.http.routers.tu-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tu-api.loadbalancer.server.port=8000"
+      # Redirect HTTP → HTTPS
+      - "traefik.http.routers.tu-api-http.rule=Host(`tu.api.sindycondo.com.br`)"
+      - "traefik.http.routers.tu-api-http.entrypoints=web"
+      - "traefik.http.routers.tu-api-http.middlewares=https-redirect@docker"
+
+  celery:
+    image: ghcr.io/${GITHUB_IMAGE}:develop
+    restart: unless-stopped
+    command: celery -A sindycondo worker -l info --concurrency=2
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - internal
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - internal
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - web
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=sindycondo_web"
+      # HTTPS
+      - "traefik.http.routers.tu-pgadmin.rule=Host(`tu.db.sindycondo.com.br`)"
+      - "traefik.http.routers.tu-pgadmin.entrypoints=websecure"
+      - "traefik.http.routers.tu-pgadmin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tu-pgadmin.loadbalancer.server.port=80"
+      # Redirect HTTP → HTTPS
+      - "traefik.http.routers.tu-pgadmin-http.rule=Host(`tu.db.sindycondo.com.br`)"
+      - "traefik.http.routers.tu-pgadmin-http.entrypoints=web"
+      - "traefik.http.routers.tu-pgadmin-http.middlewares=https-redirect@docker"
+
+volumes:
+  postgres_data:
+  media_files:
+  static_files:
+  pgadmin_data:
+
+networks:
+  web:
+    external: true
+    name: sindycondo_web
+  internal:
+    internal: true

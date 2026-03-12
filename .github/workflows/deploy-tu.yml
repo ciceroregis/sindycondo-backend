@@ -1,0 +1,96 @@
+name: Build & Deploy Backend TU
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ─────────────────────────────────────────
+  # JOB 1: Build e push da imagem Docker (tag: develop)
+  # ─────────────────────────────────────────
+  build:
+    name: Build Backend Image (TU)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build e push (tag develop)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─────────────────────────────────────────
+  # JOB 2: Deploy no VPS via SSH
+  # ─────────────────────────────────────────
+  deploy:
+    name: Deploy Backend TU
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          GITHUB_IMAGE: ${{ github.repository }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          envs: GHCR_TOKEN,GHCR_USER,REPO,SHA,GITHUB_IMAGE
+          script: |
+            set -e
+
+            mkdir -p /opt/sindycondo-tu
+            cd /opt/sindycondo-tu
+
+            echo "==> Baixando arquivos de configuração..."
+            RAW="https://raw.githubusercontent.com/${REPO}/${SHA}"
+            curl -fsSL "${RAW}/docker-compose.tu.yml" -o docker-compose.tu.yml
+
+            echo "==> Autenticando no GHCR..."
+            echo "$GHCR_TOKEN" | docker login ghcr.io \
+              -u "$GHCR_USER" --password-stdin
+
+            echo "==> Baixando nova imagem (develop)..."
+            GITHUB_IMAGE=$GITHUB_IMAGE docker compose -f docker-compose.tu.yml pull api celery
+
+            echo "==> Subindo todos os serviços TU..."
+            GITHUB_IMAGE=$GITHUB_IMAGE docker compose -f docker-compose.tu.yml up -d --remove-orphans
+
+            echo "==> Aguardando API iniciar..."
+            sleep 15
+            docker compose -f docker-compose.tu.yml ps
+
+            echo "==> Limpando imagens antigas..."
+            docker image prune -f
+
+            echo "==> Deploy TU concluído com sucesso!"
