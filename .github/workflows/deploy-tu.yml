@@ -69,8 +69,6 @@ jobs:
           script: |
             set -e
 
-            sudo mkdir -p /opt/sindycondo-tu
-            sudo chown -R "$USER":"$USER" /opt/sindycondo-tu
             cd /opt/sindycondo-tu
 
             echo "==> Baixando arquivos de configuração..."
