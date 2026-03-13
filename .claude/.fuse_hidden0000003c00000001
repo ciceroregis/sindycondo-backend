@@ -21,16 +21,7 @@
       "Bash(git remote:*)",
       "Bash(git fetch:*)",
       "Bash(git reset:*)",
-      "Bash(git branch:*)",
-      "Bash(python manage.py makemigrations gestao --name add_tipo_registro_acesso)",
-      "Bash(/media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend/venv/bin/python -c \"import django; print\\(django.__version__\\)\")",
-      "Bash(/media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend/venv/bin/pip install:*)",
-      "Bash(PYTHONPATH=/media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend /media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend/venv/bin/python /media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend/manage.py makemigrations gestao --name add_tipo_registro_acesso)",
-      "Bash(/media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend/venv/bin/python3.12 -c \"import sys; print\\(sys.path\\)\")",
-      "Bash(/usr/bin/python3 --version)",
-      "Bash(/usr/bin/python3 -c \"import sys; print\\(sys.path\\)\")",
-      "Bash(PYTHONPATH=/media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend/venv/lib/python3.12/site-packages /usr/bin/python3 /media/zurc/Cicero/MY_PROJECTS/PROJETO_CONDOMINIO/sindycondo/backend/manage.py makemigrations gestao --name add_tipo_registro_acesso)",
-      "Bash(git checkout:*)"
+      "Bash(git branch:*)"
     ]
   }
 }

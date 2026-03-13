@@ -149,11 +149,18 @@ class RegistroAcesso(models.Model):
         ('chave', 'Chave Digital'),
     ]
 
+    REGISTROS = [
+        ('entrada', 'Entrada'),
+        ('saida', 'Saída'),
+    ]
+
     condominio = models.ForeignKey(Condominio, on_delete=models.CASCADE, related_name='acessos')
     visitante = models.ForeignKey(Visitante, on_delete=models.SET_NULL, null=True, blank=True)
     morador = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='acessos')
     porteiro = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='acessos_liberados')
     tipo_acesso = models.CharField(max_length=20, choices=TIPOS)
+    # Registra se foi entrada ou saída do condomínio
+    tipo_registro = models.CharField(max_length=10, choices=REGISTROS, default='entrada')
     autorizado = models.BooleanField(default=False)
     motivo_negado = models.CharField(max_length=200, blank=True)
     face_confidence = models.FloatField(null=True, blank=True)
