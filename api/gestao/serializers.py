@@ -2,7 +2,7 @@ import unicodedata
 
 from rest_framework import serializers
 
-from .models import Condominio, Garagem, Usuario, Visitante, RegistroAcesso
+from .models import Condominio, Garagem, Usuario, Visitante, RegistroAcesso, PushSubscription
 
 
 def _gerar_username(nome, apartamento=None):
@@ -329,7 +329,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         cpf_digits = ''.join(filter(str.isdigit, validated_data.get('cpf', '') or ''))
         apartamento = validated_data.get('apartamento', '')
-        password = f'{cpf_digits}{apartamento}'
+        tipo = validated_data.get('tipo', '')
+
+        # Porteiro/síndico/admin não têm apartamento → senha = só o CPF
+        # Morador → senha = CPF + apartamento
+        if tipo == 'morador' and apartamento:
+            password = f'{cpf_digits}{apartamento}'
+        else:
+            password = cpf_digits
+
         validated_data['username'] = _gerar_username(validated_data.get('nome', ''), apartamento)
         usuario = Usuario(**validated_data)
         usuario.set_password(password)
@@ -388,16 +396,148 @@ class UsuarioUpdateSerializer(serializers.ModelSerializer):
 
 
 class VisitanteSerializer(serializers.ModelSerializer):
+    """
+    Serializer completo para criar/editar/detalhar visitantes.
+
+    Campos que o morador preenche: nome, cpf, telefone, foto, data_inicio, data_fim,
+    max_pessoas, observacoes.
+
+    Campos controlados pelo sistema (nunca vêm do body da requisição):
+    morador, condominio, status, qr_code_id, qr_code_imagem, usos_count.
+    """
     morador_nome = serializers.CharField(source='morador.nome', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    liberado_por_nome = serializers.CharField(source='liberado_por.nome', read_only=True)
 
     class Meta:
         model = Visitante
-        fields = '__all__'
-        read_only_fields = ['qr_code_id', 'qr_code_imagem', 'usos_count', 'created_at']
+        fields = [
+            'id', 'nome', 'cpf', 'telefone', 'foto',
+            'data_inicio', 'data_fim', 'max_pessoas', 'observacoes',
+            # campos somente-leitura
+            'morador', 'morador_nome', 'condominio',
+            'status', 'status_display',
+            'liberado_por', 'liberado_por_nome', 'liberado_em',
+            'qr_code_id', 'qr_code_imagem',
+            'usos_count', 'created_at',
+        ]
+        read_only_fields = [
+            'morador', 'condominio', 'status',
+            'liberado_por', 'liberado_em',
+            'qr_code_id', 'qr_code_imagem',
+            'usos_count', 'created_at',
+        ]
+
+    def validate_foto(self, value):
+        """Só aceita formatos de imagem seguros."""
+        tipos_permitidos = ['image/jpeg', 'image/png', 'image/webp']
+        if value and value.content_type not in tipos_permitidos:
+            raise serializers.ValidationError(
+                'Formato inválido. Envie uma imagem JPEG, PNG ou WebP.'
+            )
+        return value
+
+    def validate(self, attrs):
+        from django.utils import timezone
+        from datetime import timedelta
+
+        data_inicio = attrs.get('data_inicio')
+        data_fim = attrs.get('data_fim')
+        max_pessoas = attrs.get('max_pessoas', 1)
+
+        if data_inicio and data_fim:
+            agora = timezone.now()
+
+            # Só impede data no passado ao criar — em edições, a data já pode ser passada
+            if self.instance is None and data_inicio < agora:
+                raise serializers.ValidationError(
+                    {'data_inicio': 'A data de início não pode ser no passado.'}
+                )
+
+            # data_fim deve ser depois de data_inicio
+            if data_fim <= data_inicio:
+                raise serializers.ValidationError(
+                    {'data_fim': 'A data de fim deve ser posterior à data de início.'}
+                )
+
+            # Máximo 90 dias de autorização por cadastro (evita passes permanentes)
+            if (data_fim - data_inicio) > timedelta(days=90):
+                raise serializers.ValidationError(
+                    {'data_fim': 'O período máximo de autorização é de 90 dias.'}
+                )
+
+        # Entre 1 e 20 pessoas por cadastro de visita
+        if max_pessoas is not None and not (1 <= max_pessoas <= 20):
+            raise serializers.ValidationError(
+                {'max_pessoas': 'Informe entre 1 e 20 pessoas.'}
+            )
+
+        return attrs
+
+
+class VisitanteListSerializer(serializers.ModelSerializer):
+    """
+    Versão resumida para listagens — omite foto e QR Code para
+    reduzir o tamanho da resposta quando há muitos visitantes.
+    """
+    morador_nome = serializers.CharField(source='morador.nome', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = Visitante
+        fields = [
+            'id', 'nome', 'cpf', 'telefone',
+            'data_inicio', 'data_fim', 'max_pessoas',
+            'morador', 'morador_nome', 'condominio',
+            'status', 'status_display',
+            'usos_count', 'created_at',
+        ]
 
 
 class RegistroAcessoSerializer(serializers.ModelSerializer):
+    """
+    Serializer para leitura dos registros de acesso.
+
+    Os campos 'condominio' e 'porteiro' são sempre injetados pelo view
+    — nunca enviados pelo frontend.
+    """
+    visitante_nome = serializers.SerializerMethodField()
+    porteiro_nome = serializers.SerializerMethodField()
+
     class Meta:
         model = RegistroAcesso
-        fields = '__all__'
-        read_only_fields = ['timestamp']
+        fields = [
+            'id', 'timestamp',
+            'condominio', 'visitante', 'visitante_nome',
+            'porteiro', 'porteiro_nome',
+            'tipo_acesso', 'tipo_registro',
+            'autorizado', 'motivo_negado',
+            'placa_detectada', 'imagem_snapshot',
+        ]
+        read_only_fields = ['timestamp', 'condominio', 'porteiro', 'autorizado']
+
+    def get_visitante_nome(self, obj):
+        return obj.visitante.nome if obj.visitante else None
+
+    def get_porteiro_nome(self, obj):
+        return obj.porteiro.nome if obj.porteiro else None
+
+
+class ValidarQRSerializer(serializers.Serializer):
+    """
+    Input do endpoint de validação de QR Code pela portaria.
+
+    O porteiro envia o UUID lido pelo scanner e informa se é entrada ou saída.
+    Placa e snapshot são opcionais (usados quando há câmera de veículos).
+    """
+    qr_code_id = serializers.UUIDField()
+    tipo_registro = serializers.ChoiceField(choices=['entrada', 'saida'])
+    placa_detectada = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    imagem_snapshot = serializers.ImageField(required=False)
+
+
+class PushSubscriptionSerializer(serializers.Serializer):
+    """Payload enviado pelo browser ao subscrever notificações push."""
+    endpoint = serializers.URLField()
+    p256dh = serializers.CharField()
+    auth = serializers.CharField()

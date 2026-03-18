@@ -1,43 +1,5 @@
 services:
 
-  traefik:
-    image: traefik:v3
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - traefik_acme:/acme
-    networks:
-      - web
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=sindycondo_web"
-      # Middleware global de redirect HTTP → HTTPS (definido aqui pois traefik sobe primeiro)
-      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
-      # Dashboard HTTPS
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.sindycondo.com.br`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
-      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
-      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_AUTH}"
-      # Redireciona raiz → /dashboard/
-      - "traefik.http.routers.traefik-root.rule=Host(`traefik.sindycondo.com.br`) && Path(`/`)"
-      - "traefik.http.routers.traefik-root.entrypoints=websecure"
-      - "traefik.http.routers.traefik-root.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.traefik-root.middlewares=traefik-auth,traefik-root-redirect"
-      - "traefik.http.routers.traefik-root.service=api@internal"
-      - "traefik.http.middlewares.traefik-root-redirect.redirectregex.regex=^https://traefik\\.sindycondo\\.com\\.br/$"
-      - "traefik.http.middlewares.traefik-root-redirect.redirectregex.replacement=https://traefik.sindycondo.com.br/dashboard/"
-      # Redirect HTTP → HTTPS
-      - "traefik.http.routers.traefik-dashboard-http.rule=Host(`traefik.sindycondo.com.br`)"
-      - "traefik.http.routers.traefik-dashboard-http.entrypoints=web"
-      - "traefik.http.routers.traefik-dashboard-http.middlewares=https-redirect"
-
   api:
     image: ghcr.io/${GITHUB_IMAGE}:latest
     restart: unless-stopped
@@ -55,7 +17,10 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=sindycondo_web"
+      - "traefik.docker.network=web"
+      # Middleware global de redirect HTTP → HTTPS
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
       # HTTPS
       - "traefik.http.routers.api.rule=Host(`api.sindycondo.com.br`)"
       - "traefik.http.routers.api.entrypoints=websecure"
@@ -118,7 +83,7 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=sindycondo_web"
+      - "traefik.docker.network=web"
       # HTTPS
       - "traefik.http.routers.pgadmin.rule=Host(`db.sindycondo.com.br`)"
       - "traefik.http.routers.pgadmin.entrypoints=websecure"
@@ -139,7 +104,7 @@ services:
       - web
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=sindycondo_web"
+      - "traefik.docker.network=web"
       # HTTPS
       - "traefik.http.routers.portainer.rule=Host(`portainer.sindycondo.com.br`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
@@ -154,11 +119,11 @@ volumes:
   postgres_data:
   media_files:
   static_files:
-  traefik_acme:
   pgadmin_data:
   portainer_data:
 
 networks:
   web:
+    external: true
   internal:
     internal: true

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source venv/bin/activate && python manage.py migrate 2>&1)",
+      "Bash(source venv/bin/activate && python manage.py check 2>&1)",
+      "Bash(source venv/bin/activate && python manage.py makemigrations gestao --name=\"add_status_cadastro_usuario\" 2>&1)",
+      "Bash(source venv/bin/activate && python manage.py makemigrations gestao --name=\"remove_status_cadastro_usuario\" 2>&1 && python manage.py migrate 2>&1)",
+      "Bash(source venv/bin/activate && python manage.py makemigrations gestao --name=\"rename_total_add_vagas_condominio\" 2>&1 && python manage.py migrate 2>&1)",
+      "Bash(source venv/bin/activate && python manage.py makemigrations gestao --name=\"rename_total_add_vagas_condominio\" 2>&1 << 'EOF'\ny\nEOF)"
+    ]
+  }
+}
