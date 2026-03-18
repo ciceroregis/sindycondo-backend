@@ -36,10 +36,10 @@ numpy==2.4.3
 opencv-python==4.9.0.80
 packaging==26.0
 pathspec==1.0.4
-pillow==10.2.0
+pillow>=10.4.0
 platformdirs==4.9.4
 prompt_toolkit==3.0.52
-psycopg2-binary==2.9.9
+psycopg2-binary>=2.9.9
 pycodestyle==2.11.1
 pyflakes==3.2.0
 PyJWT==2.12.0
@@ -49,6 +49,7 @@ python-decouple==3.8
 python-dotenv==1.0.0
 python-slugify==8.0.4
 PyYAML==6.0.3
+pywebpush==2.0.0
 qrcode==7.4.2
 redis==5.0.1
 referencing==0.37.0
@@ -64,3 +65,4 @@ uritemplate==4.2.0
 urllib3==2.6.3
 vine==5.1.0
 wcwidth==0.6.0
+whitenoise>=6.0.0

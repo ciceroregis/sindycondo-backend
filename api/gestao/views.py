@@ -7,7 +7,9 @@ from rest_framework.response import Response
 
 from django.db.models import F
 
-from .models import Condominio, Garagem, Usuario, Visitante, RegistroAcesso
+from django.conf import settings
+
+from .models import Condominio, Garagem, Usuario, Visitante, RegistroAcesso, PushSubscription
 from .permissions import IsAdmin, IsAdminOrSindico, IsMesmoCondominio, IsPorteiroOrAbove
 from .serializers import (
     CondominioSerializer,
@@ -19,6 +21,7 @@ from .serializers import (
     VisitanteListSerializer,
     RegistroAcessoSerializer,
     ValidarQRSerializer,
+    PushSubscriptionSerializer,
 )
 
 
@@ -294,7 +297,7 @@ class VisitanteViewSet(viewsets.ModelViewSet):
         if self.action == 'destroy':
             return [IsAdminOrSindico()]
         if self.action == 'aprovar':
-            return [IsAdminOrSindico()]
+            return [IsPorteiroOrAbove()]
         return [IsAuthenticated()]
 
     def get_queryset(self):
@@ -346,7 +349,7 @@ class VisitanteViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('Você só pode editar os seus próprios visitantes.')
         serializer.save()
 
-    @action(detail=True, methods=['patch'], permission_classes=[IsAdminOrSindico])
+    @action(detail=True, methods=['patch'], permission_classes=[IsPorteiroOrAbove])
     def aprovar(self, request, pk=None):
         """
         Aprova um visitante pendente e gera o QR Code de acesso.
@@ -365,6 +368,8 @@ class VisitanteViewSet(viewsets.ModelViewSet):
             )
 
         visitante.status = 'approved'
+        visitante.liberado_por = _get_usuario(request.user)
+        visitante.liberado_em = timezone.now()
         visitante.qr_code_imagem = gerar_qr_code(visitante)
         visitante.save()
 
@@ -553,3 +558,36 @@ def validar_qr(request):
         },
         'registro_id': registro.id,
     })
+
+
+# ─── Push Notifications ──────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def vapid_public_key(request):
+    """Retorna a chave pública VAPID para o browser subscrever notificações."""
+    return Response({'public_key': settings.VAPID_PUBLIC_KEY})
+
+
+@api_view(['POST', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def push_subscribe(request):
+    """Salva ou remove a subscrição push do browser atual."""
+    usuario = _get_usuario(request.user)
+    if not usuario:
+        return Response(status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'DELETE':
+        endpoint = request.data.get('endpoint')
+        PushSubscription.objects.filter(usuario=usuario, endpoint=endpoint).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    serializer = PushSubscriptionSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    d = serializer.validated_data
+
+    PushSubscription.objects.update_or_create(
+        endpoint=d['endpoint'],
+        defaults={'usuario': usuario, 'p256dh': d['p256dh'], 'auth': d['auth']},
+    )
+    return Response(status=status.HTTP_201_CREATED)

@@ -9,6 +9,8 @@ from .views import (
     RegistroAcessoViewSet,
     dashboard_stats,
     validar_qr,
+    vapid_public_key,
+    push_subscribe,
 )
 
 router = DefaultRouter()
@@ -24,4 +26,6 @@ urlpatterns = [
     path('acessos/validar-qr/', validar_qr, name='validar-qr'),
     path('', include(router.urls)),
     path('dashboard/stats/', dashboard_stats, name='dashboard-stats'),
+    path('push/vapid-key/', vapid_public_key, name='vapid-public-key'),
+    path('push/subscribe/', push_subscribe, name='push-subscribe'),
 ]

@@ -2,7 +2,7 @@ import unicodedata
 
 from rest_framework import serializers
 
-from .models import Condominio, Garagem, Usuario, Visitante, RegistroAcesso
+from .models import Condominio, Garagem, Usuario, Visitante, RegistroAcesso, PushSubscription
 
 
 def _gerar_username(nome, apartamento=None):
@@ -329,7 +329,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         cpf_digits = ''.join(filter(str.isdigit, validated_data.get('cpf', '') or ''))
         apartamento = validated_data.get('apartamento', '')
-        password = f'{cpf_digits}{apartamento}'
+        tipo = validated_data.get('tipo', '')
+
+        # Porteiro/síndico/admin não têm apartamento → senha = só o CPF
+        # Morador → senha = CPF + apartamento
+        if tipo == 'morador' and apartamento:
+            password = f'{cpf_digits}{apartamento}'
+        else:
+            password = cpf_digits
+
         validated_data['username'] = _gerar_username(validated_data.get('nome', ''), apartamento)
         usuario = Usuario(**validated_data)
         usuario.set_password(password)
@@ -399,6 +407,7 @@ class VisitanteSerializer(serializers.ModelSerializer):
     """
     morador_nome = serializers.CharField(source='morador.nome', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    liberado_por_nome = serializers.CharField(source='liberado_por.nome', read_only=True)
 
     class Meta:
         model = Visitante
@@ -408,11 +417,13 @@ class VisitanteSerializer(serializers.ModelSerializer):
             # campos somente-leitura
             'morador', 'morador_nome', 'condominio',
             'status', 'status_display',
+            'liberado_por', 'liberado_por_nome', 'liberado_em',
             'qr_code_id', 'qr_code_imagem',
             'usos_count', 'created_at',
         ]
         read_only_fields = [
             'morador', 'condominio', 'status',
+            'liberado_por', 'liberado_em',
             'qr_code_id', 'qr_code_imagem',
             'usos_count', 'created_at',
         ]
@@ -437,8 +448,8 @@ class VisitanteSerializer(serializers.ModelSerializer):
         if data_inicio and data_fim:
             agora = timezone.now()
 
-            # A visita não pode ser agendada para o passado
-            if data_inicio < agora:
+            # Só impede data no passado ao criar — em edições, a data já pode ser passada
+            if self.instance is None and data_inicio < agora:
                 raise serializers.ValidationError(
                     {'data_inicio': 'A data de início não pode ser no passado.'}
                 )
@@ -523,3 +534,10 @@ class ValidarQRSerializer(serializers.Serializer):
     tipo_registro = serializers.ChoiceField(choices=['entrada', 'saida'])
     placa_detectada = serializers.CharField(max_length=20, required=False, allow_blank=True)
     imagem_snapshot = serializers.ImageField(required=False)
+
+
+class PushSubscriptionSerializer(serializers.Serializer):
+    """Payload enviado pelo browser ao subscrever notificações push."""
+    endpoint = serializers.URLField()
+    p256dh = serializers.CharField()
+    auth = serializers.CharField()
