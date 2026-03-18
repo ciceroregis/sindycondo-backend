@@ -182,6 +182,12 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
 }
 
+# === WEB PUSH (VAPID) ===
+# Gere as chaves com: python manage.py generate_vapid_keys
+VAPID_PUBLIC_KEY = env('VAPID_PUBLIC_KEY', default='')
+VAPID_PRIVATE_KEY = env('VAPID_PRIVATE_KEY', default='')
+VAPID_ADMIN_EMAIL = env('VAPID_ADMIN_EMAIL', default='admin@sindycondo.com.br')
+
 # === SEGURANÇA (produção) ===
 ENVIRONMENT = env('ENVIRONMENT', default='development')
 

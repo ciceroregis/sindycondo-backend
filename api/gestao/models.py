@@ -126,6 +126,11 @@ class Visitante(models.Model):
     qr_code_id = models.UUIDField(default=uuid.uuid4, unique=True)
     qr_code_imagem = models.ImageField(upload_to='qrcodes/', null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS, default='pending')
+    liberado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='visitantes_liberados',
+    )
+    liberado_em = models.DateTimeField(null=True, blank=True)
     observacoes = models.TextField(blank=True)
     usos_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -149,11 +154,18 @@ class RegistroAcesso(models.Model):
         ('chave', 'Chave Digital'),
     ]
 
+    REGISTROS = [
+        ('entrada', 'Entrada'),
+        ('saida', 'Saída'),
+    ]
+
     condominio = models.ForeignKey(Condominio, on_delete=models.CASCADE, related_name='acessos')
     visitante = models.ForeignKey(Visitante, on_delete=models.SET_NULL, null=True, blank=True)
     morador = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='acessos')
     porteiro = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='acessos_liberados')
     tipo_acesso = models.CharField(max_length=20, choices=TIPOS)
+    # Registra se foi entrada ou saída do condomínio
+    tipo_registro = models.CharField(max_length=10, choices=REGISTROS, default='entrada')
     autorizado = models.BooleanField(default=False)
     motivo_negado = models.CharField(max_length=200, blank=True)
     face_confidence = models.FloatField(null=True, blank=True)
@@ -170,6 +182,23 @@ class RegistroAcesso(models.Model):
     def __str__(self):
         status = '✅' if self.autorizado else '❌'
         return f'{status} {self.tipo_acesso} - {self.timestamp.strftime("%d/%m %H:%M")}'
+
+
+class PushSubscription(models.Model):
+    """Armazena as subscrições Web Push por usuário/dispositivo."""
+    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.TextField(unique=True)
+    p256dh = models.TextField()
+    auth = models.TextField()
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'push_subscriptions'
+        verbose_name = 'Push Subscription'
+        verbose_name_plural = 'Push Subscriptions'
+
+    def __str__(self):
+        return f'{self.usuario.nome} — {self.endpoint[:60]}…'
 
 
 class AuditLog(models.Model):
